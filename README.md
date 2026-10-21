@@ -1,7 +1,6 @@
-# AI 圆桌讨论 · Web App MVP
+# AI Panel Studio · AI 圆桌演播厅 MVP
 
-一场由多个立场**天然对立**的 AI 嘉宾参与的多轮圆桌讨论：主持人控场、点名发言、追问交锋，最后收敛出总结。
-全链路真实流式（SSE），前端可见逐字上屏与"正在思考"动画。
+输入话题 + 专家人数（默认 4），系统调用大模型**动态生成**主持人 + 专家阵容（姓名 / 职业 / Title / 立场 / 专属颜色），确认后进入演播厅，观看一场实时推进的多轮圆桌讨论：主持人开场、追问、串联、插话、总结；专家**自主**举手 / 补充 / 反驳，每次 1-2 句；过程中实时更新共识与分歧。
 
 ## 快速开始
 
@@ -10,75 +9,135 @@
 pip install -r backend/requirements.txt
 
 # 2) 配置 Key（可选：不配也能跑，自动进入 Mock 流式模式）
-cp .env.example .env      # 填入 DEEPSEEK_API_KEY
+cp .env.example .env        # 填入 DEEPSEEK_API_KEY
 
-# 3) 启动
-python -m uvicorn backend.app.main:app --reload --port 8000
+# 3) 启动（生产路径）
+cd backend && python -m uvicorn app.main:app --reload --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 ```
 
-> 启动方式二（推荐）：
-> ```
-> cd backend && python -m uvicorn app.main:app --reload --port 8000
-> ```
-> 启动方式三（**零依赖**，未装 fastapi 也能演示，仅用于本地）：
-> ```
-> python backend/serve.py 8000          # 加 MOCK=true 可强制 Mock 流式
-> ```
-> 零依赖冒烟（不装 fastapi 也能验证编排链路）：`python backend/smoke.py`
-> 单元测试：`python backend/tests/test_orchestrator.py`
+**零依赖启动**（未装 fastapi 也能演示 / 跑 E2E）：
 
-## 功能
+```bash
+python backend/serve.py 8000          # MOCK=true 可强制 Mock 流式
+```
 
-| 页面 | 说明 |
-|---|---|
-| 圆桌列表 | 展示全部圆桌及状态（待开始/进行中/已结束/异常） |
-| 发起圆桌 | 输入主题 + 选择 2-5 位嘉宾（嘉宾立场已预埋分歧） |
-| 直播现场 | SSE 流式上屏、思考动画、轮次分隔、聚焦问题、立场漂移标签、Transcript 侧栏 |
-| 历史归档 | 已结束圆桌的完整记录与主持人总结（支持回放式播放） |
+其他命令：
+
+```bash
+python backend/smoke.py                       # 零依赖冒烟：跑完整一场
+python backend/tests/test_core.py             # 核心逻辑单测（阵容/调度/共识）
+python backend/tests/test_orchestrator.py     # 编排器单测（状态机/非轮流/状态小窗）
+python backend/e2e/test_e2e.py                # E2E：起服务 → 双讨论并行隔离验证
+```
+
+## 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | 空 | 为空自动进入 Mock 流式；**只存在后端 env，绝不下发浏览器** |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容端点 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | 模型名 |
+| `MOCK` | 空 | `true` 强制 Mock |
+| `MAX_ROUNDS` | 4 | 轮数上限 |
+| `MAX_SPEECHES_PER_ROUND` | 4 | 每轮发言次数上限 |
+| `DB_PATH` | `backend/data/roundtable.db` | SQLite 路径 |
+
+## 技术选型
+
+| 层 | 选型 | 理由 |
+|---|---|---|
+| 后端 | Python 3 + FastAPI（+ uvicorn） | 异步 SSE 支持好；同时提供等价的 stdlib `http.server` 版，保证离线可演示 |
+| 数据 | SQLite（标准库 sqlite3） | 作业指定；零运维，初始化脚本 `scripts/init_db.sql` |
+| 前端 | 原生 HTML/CSS/JS（无框架） | 演播厅布局靠 CSS Grid 即可精确控制"区域独立滚动"，避免框架带来的体积与构建 |
+| 实时 | SSE（EventSource） | 单向推送足够；比 WebSocket 简单，断线自动重连 |
+| 模型 | DeepSeek（OpenAI 兼容协议） | 国内可用、成本低；缺 Key 时自动降级 Mock 流式 |
+| 测试 | unittest + asyncio（零第三方依赖） | 沙箱/离线可跑；桩 LLM 可脚本化模拟异常 |
+
+## 主要 API 列表
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/health` | 健康检查 + 当前模式 |
+| GET | `/api/topics` | ≥5 条样例数据（话题 + 阵容） |
+| POST | `/api/lineups` | 大模型动态生成阵容 `{topic, expert_count}` |
+| POST | `/api/debates` | 确认阵容后建单 `{topic, lineup}` |
+| GET | `/api/debates` | 讨论列表 |
+| GET | `/api/debates/{id}` | 详情（messages / consensus / disagreements / summary） |
+| GET | `/api/debates/{id}/stream` | SSE 事件流（直播 / 已结束则逐字回放） |
+
+SSE 事件：`participants` `round_change` `focus` `agent_status` `speaker_start` `delta` `speaker_end` `stance` `insight` `error` `done` —— 详见 `docs/12-API文档.md`。
 
 ## 架构
 
 ```
-前端(Vanilla JS) ──REST──┐
-                         ├─ FastAPI ─ Orchestrator(状态机) ─ HostAgent/GuestAgent ─ DeepSeek(流式)
-                  ──SSE──┘                                        └─ 版本化 Prompt(prompts/*.json) + JSON Schema 校验
-                                      └─ SQLite(personas/debates/messages)
+浏览器(原生 JS) ──REST──┐
+                        ├─ FastAPI ── Orchestrator(状态机)
+                 ──SSE──┘                ├─ HostAgent     开场/串联/追问/插话/总结
+                                         ├─ DirectorAgent 自主调度(举手/补充/反驳)+公开思考摘要
+                                         ├─ GuestAgent    1-2 句流式发言 + 立场漂移
+                                         ├─ InsightAgent  共识/分歧增量提炼
+                                         └─ LineupAgent   动态生成阵容
+                                         └─ SQLite(topics / debates / messages)
 ```
 
-- 状态机：`OPENING → ROUND[1..N]（每轮最多 K 次发言）→ SUMMARY → DONE`
-- 调度：**点名制**（主持人给聚焦问题并点名），比自由抢话稳定、重复率低
-- 结构化输出：Host 决策整体校验后"分块回放"上屏；Guest 正文纯流式，结束后用一次极短调用标注 `stance_shift`
-- 详见 `docs/01-架构设计文档.md`、`docs/02-Prompt设计文档.md`
+- 状态机：`OPENING → ROUND[1..N] → SUMMARY → DONE`
+- **禁止机械轮流**：`DirectorAgent` 依据 transcript 选人，且绝不会连续选同一个人（有单测断言）
+- 结构化输出：决策类（Host/Director/Insight）用 JSON 整体校验后再推正文；专家正文纯流式。页面永远只显示自然语言，**不显示 JSON 原文**
+
+## 需求对照（作业 F1-F12）
+
+| 需求 | 实现 |
+|---|---|
+| 首页列表 + 加入观察 | ✅ `#/` |
+| LLM 动态生成阵容 + 确认 | ✅ `#/create` → 生成 → 确认 |
+| 自主发言调度（举手/补充/反驳） | ✅ DirectorAgent |
+| 每次 1-2 句 | ✅ guest.v4 + 120 字打断 |
+| 专家状态小窗 | ✅ 右侧面板（待机/准备发言/发言中 + 公开思考摘要） |
+| 实时共识与分歧 | ✅ 每条发言后增量更新 |
+| Transcript（姓名+职业/Title+色块） | ✅ 右侧面板，不显示内部事件 |
+| 主持人自然语言总结 | ✅ |
+| Key 仅后端 env | ✅ |
+| 多讨论并行隔离 | ✅ E2E 验证 |
+| SSE | ✅ |
+| 中文 UI / 区域独立滚动 / 响应式 | ✅ 三档断点（>1600 / 1080 / <720） |
 
 ## 兜底策略（任何单点失败都不中断直播）
 
 | 故障 | 处理 |
 |---|---|
-| Host 输出非法 JSON | 重试 1 次 → 降级兜底文案 + 调度器备选发言人，前端打"结构降级"标 |
-| `next_speaker` 不在场 | 修正为备选发言人 |
-| Guest 流式中断/超时 | 已产出部分上屏，不足 20 字补占位句 |
-| 轮次/发言数超限 | 强制进入 SUMMARY |
-| SSE 断线 | EventSource 自动重连；刷新页面时走存档回放 |
-| 顶层异常 | status=failed + error 事件，前端提示可重试 |
+| 阵容生成返回非法 JSON | 重试 1 次 → 内置嘉宾池补全（保证人数与颜色不重复） |
+| Host / Director 输出非法 | 降级兜底文案 + 确定性补位（发言次数最少者优先） |
+| 专家流式中断 | 已产出部分上屏，不足则补占位句 |
+| 专家发言过长 | 主持人插话打断并要求给结论 |
+| Insight 调用失败 | 沿用上一次结果，讨论继续 |
+| 轮次/发言数超限 | 强制进入总结 |
+| SSE 断线 | EventSource 自动重连；刷新走存档逐字回放 |
+| 顶层异常 | `status=failed` + error 事件，前端提示可重试 |
 
-## 作业三问
+## 已完成能力
 
-**Q1：使用 Claude Code 结合 DeepSeek V4 进行开发或迭代，如何实现？**
-Claude Code（本项目的代码协作者）负责代码生成、重构、写测试与定位报错；DeepSeek 是**运行时**的推理引擎，是被调试的对象而非开发工具。两者角色分离：开发期用 `MockLLMClient` / 测试里的 `StubLLM` 提供假流式响应，让编排逻辑的单元测试不烧 token 也能跑通（`python backend/tests/test_orchestrator.py`）；联调期切真实 DeepSeek 跑冒烟。Prompt 的每次迭代都以 `prompts/*.json` 的 `changelog` 字段落盘进 Git，迭代过程本身可追溯。
+- 动态阵容生成与确认、演播厅直播、自主调度、1-2 句短发言、主持人插话
+- 专家状态小窗、实时共识/分歧、Transcript、自然语言总结、历史归档回放
+- 多讨论并行隔离、零依赖演示服务、16 个单测 + 4 个 E2E
 
-**Q2：如何判断多个 Agent 是否真的"有价值"？**
-不看"看起来热闹"，看三条可验证指标：① **交锋率**——嘉宾是否引用并反驳了对方的具体论据（人工标注命中/未命中）；② **收敛性**——有限轮次内产出总结，且总结覆盖各方最强论点；③ **立场漂移有据**——`stance_shift=soften/change` 必须伴随被说服的具体原因。用固定 3 主题 × 3 次运行打 `evals/rubric.md` 的评估表，避免单次运气。
+## 后续改进方向
 
-**Q3：圆桌流程中最不确定的问题，如何通过实验验证？**
-最不确定的是**点名制 vs 自由抢话制**哪个讨论质量更高。实验设计：同一主题、同一组 Persona，两种调度各跑 3 次，用 Q2 的评估表对比"交锋率"与"重复率"。预判点名制交锋率略低但重复率显著更低、整体更稳定，因此 **MVP 先上点名制**；若数据支持，再引入混合模式（主持人可发起"自由回应一轮"）。实验只需改 `Settings.max_speeches_per_round` 与 Host Prompt 的调度约束，不需要改架构。
+1. **调度策略实验**：点名制 vs 自由抢话的 A/B 评估（`evals/rubric.md` 已有 6 指标评估表），用数据决定默认策略
+2. **共识/分歧质量**：当前靠一次 LLM 提炼，后续可做多轮投票式聚合与置信度
+3. **持久化与并发**：SQLite 单文件在多人同时观看时够用，但事件流目前靠 SSE 重放；可引入事件表 + 断点续传（Last-Event-ID）
+4. **用户干预**：允许观众中途提问或"指定下一位发言人"
+5. **可观测性**：记录每次 LLM 调用的 token/耗时/降级率，形成质量看板
 
-## 目录
+## 文档索引
 
-```
-backend/  app/(config, main, orchestrator, context, agents/, llm/, storage/)
-          prompts/(host.v4.json, guest.v3.json)  tests/  smoke.py
-frontend/ index.html  css/  js/
-docs/     架构设计 / Prompt 设计 / 工作流程图 / 提交清单
-evals/    rubric.md（人工评估表）
-```
+| 文档 | 内容 |
+|---|---|
+| `docs/00-作业需求原文.md` | 作业原文 + 验收点对照 |
+| `docs/10-PRD.md` | PRD（含 mermaid 流程图与状态机） |
+| `docs/11-ER图.md` | ER 图 + 建模决策 |
+| `docs/12-API文档.md` | REST + SSE 契约 |
+| `docs/13-Prompt记录.md` | ≥5 段核心 Prompt，SDD/DDD/TDD/E2E 四阶段标记 |
+| `docs/14-开发过程与工作流说明.md` | 开发流程、3 个典型问题、工程化理解 |
+| `docs/01-架构设计文档.md` / `docs/02-Prompt设计文档.md` / `docs/00-工作流程图.md` | 早期设计稿与迭代记录 |
+| `evals/rubric.md` | 圆桌质量人工评估表 |

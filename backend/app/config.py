@@ -58,9 +58,9 @@ class Settings:
     max_retry: int = 1  # 失败重试次数（作业要求：兜底策略）
 
     # ---- 编排参数（实验可调）----
-    max_rounds: int = field(default_factory=lambda: _as_int(os.environ.get("MAX_ROUNDS"), 3))
+    max_rounds: int = field(default_factory=lambda: _as_int(os.environ.get("MAX_ROUNDS"), 4))
     max_speeches_per_round: int = field(
-        default_factory=lambda: _as_int(os.environ.get("MAX_SPEECHES_PER_ROUND"), 3)
+        default_factory=lambda: _as_int(os.environ.get("MAX_SPEECHES_PER_ROUND"), 4)
     )
     history_window: int = 4          # 嘉宾可见的最近发言条数
     max_history_chars: int = 6000    # 超出后对更早发言做摘要压缩
