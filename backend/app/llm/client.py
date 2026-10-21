@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 from typing import AsyncIterator
 
 from ..config import Settings
@@ -138,9 +139,46 @@ class MockLLMClient(BaseLLMClient):
 
     @staticmethod
     def _compose(messages: list[dict]) -> str:
+        # 延迟导入避免循环依赖（agents 会 import client）
+        from ..agents.guest import mock_speech
+        from ..agents.lineup import mock_lineup
+
         system = next((m["content"] for m in messages if m["role"] == "system"), "")
         last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         topic = last_user.split("「")[-1].split("」")[0] if "「" in last_user else "这个话题"
+
+        # 阵容生成
+        if "选角导演" in system:
+            count = 4
+            for token in last_user.replace("：", " ").split():
+                if token.isdigit():
+                    count = max(2, min(5, int(token)))
+                    break
+            return json.dumps(mock_lineup(topic, count), ensure_ascii=False)
+
+        # 发言调度
+        if "发言调度器" in system:
+            ids = re.findall(r"- (e\d+)｜", last_user)
+            last = last_user.split("上一位发言者：")[1].split("\n")[0].strip() if "上一位发言者：" in last_user else ""
+            choices = [i for i in ids if i and i != last] or ids or ["e1"]
+            return json.dumps({
+                "speaker": random.choice(choices),
+                "action": random.choice(["raise_hand", "supplement", "rebut"]),
+                "thought": random.choice([
+                    "刚才那句把我这点戳中了，我想接一句",
+                    "这个焦点我还没说过，应该补上我的视角",
+                    "他的结论下得太快，我要提个反例",
+                ]),
+            }, ensure_ascii=False)
+
+        # 共识 / 分歧提炼
+        if "议题分析员" in system:
+            latest = last_user.split("最新发言：")[-1].strip()[:80] or "当前发言"
+            return json.dumps({
+                "consensus": [f"都认为「{topic}」不能只看技术本身"[:40]],
+                "disagreements": [{"a": "乐观派", "b": "谨慎派",
+                                   "point": f"{latest[:20]}…上节奏与代价谁先算"}],
+            }, ensure_ascii=False)
 
         if "主持人" in system:
             # 主持人：返回决策 JSON（末条用户指令决定输出哪种 type）
@@ -168,16 +206,16 @@ class MockLLMClient(BaseLLMClient):
                 "focus": "这个判断在实际执行层面站得住吗？",
             }, ensure_ascii=False)
 
-        # 嘉宾：纯文本发言
+        # 专家：1-2 句短发言（确定性，避免每次刷新内容乱跳）
         name = "我"
         if "你是" in system:
             name = system.split("你是")[1].split("，")[0].strip()
-        lines = [
-            f"我先把话放在这：关于{topic}，我的判断来自我自己的经历，不是PPT。",
-            "乐观的说法我听过很多，但真正卡住的是成本、数据和人的配合这三件事。",
-            "如果非要说一个可执行的动作，我会建议先做小范围验证，别一上来就全面铺开。",
-        ]
-        return f"{name}：" + "".join(lines)
+        stance = ""
+        if "你的立场：" in system:
+            stance = system.split("你的立场：")[1].split("\n")[0].strip()
+        focus = last_user.split("当前焦点：")[1].split("\n")[0].strip() if "当前焦点：" in last_user else topic
+        seq = len(system) + len(last_user)
+        return mock_speech(name, stance or "有自己的独立判断", topic, focus, seq)
 
 
 def build_client(settings: Settings) -> BaseLLMClient:

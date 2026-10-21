@@ -1,87 +1,77 @@
-"""主持人 Agent：负责控场与调度决策。
+"""主持人 Agent：开场 / 追问 / 串联 / 插话 / 总结。
 
-输出为决策 JSON（type / content / next_speaker / focus）。
-决策字段先整体校验，再以"分块回放"的方式把 content 流式推给前端——
-这样既保证调度可靠，又保留流式观感（详见架构文档 §2.3）。
+对齐需求：主持人负责开场、追问、串联和总结；每次 1-2 句；插话用于打断跑题的长发言。
+输出为决策 JSON（type / content / focus），由 Orchestrator 校验后再推给前端，
+页面上永远只出现 content 这一句自然语言（禁止显示 JSON 原文）。
 """
 from __future__ import annotations
 
-from typing import Any
-
 from ..llm.client import BaseLLMClient
+from ..storage.db import Expert
 from .base import BaseAgent, load_prompt
 
-HOST_PROMPT = "host.v4.json"
+HOST_PROMPT = "host.v5.json"
 
-VALID_TYPES = {"question", "transition", "summary", "closing"}
+VALID_TYPES = {"opening", "question", "transition", "interrupt", "summary"}
 
 
 class HostAgent(BaseAgent):
-    def __init__(self, llm: BaseLLMClient, topic: str, personas: list[Any]):
-        super().__init__(llm, name="知遥", speaker_id="host")
+    def __init__(self, llm: BaseLLMClient, topic: str, experts: list[Expert],
+                 host_name: str = "知遥", host_title: str = "主持人"):
+        super().__init__(llm, name=host_name, speaker_id="host")
         self.topic = topic
-        self.personas = personas
+        self.experts = experts
+        self.host_title = host_title
         self.prompt = load_prompt(HOST_PROMPT)
         self.system = self._fmt(
             self.prompt["system"],
-            topic=topic,
-            personas_brief="\n".join(
-                f"- {p.id}｜{p.name}（{p.title}）：{p.stance}" for p in personas
-            ),
+            host_name=host_name, topic=topic,
+            experts_brief="\n".join(
+                f"- {e.id}｜{e.name}（{e.occupation}/{e.title}）：{e.stance}" for e in experts),
         )
 
     def _messages(self, user_text: str) -> list[dict]:
-        return [
-            {"role": "system", "content": self.system},
-            {"role": "user", "content": user_text},
-        ]
+        return [{"role": "system", "content": self.system}, {"role": "user", "content": user_text}]
 
-    async def decide(self, *, stage: str, round_no: int, max_rounds: int,
-                     speakers_this_round: list[str], last_focus: str,
-                     recent_digest: str, fallback_speaker: str) -> dict:
-        """返回规范化后的决策 dict，永不抛异常。"""
-        if stage == "opening":
-            user = self.prompt["opening_user"]
-        elif stage == "summary":
-            user = self.prompt["summary_user"]
-        else:
-            user = self._fmt(
-                self.prompt["next_user"],
-                round=round_no, max_rounds=max_rounds,
-                speakers_this_round="、".join(speakers_this_round) or "（本轮尚未发言）",
-                last_focus=last_focus or "（无）", recent_digest=recent_digest or "（无）",
-            )
+    async def opening(self) -> dict:
+        return await self._decide(self.prompt["opening_user"], "opening")
 
-        obj = await self._call_json(self._messages(user), retries=1, temperature=0.7)
-        return self._normalize(obj, stage, fallback_speaker, user)
+    async def transition(self, *, round_no: int, max_rounds: int, speeches: int, action: str,
+                         last_speaker: str, last_content: str) -> dict:
+        user = self._fmt(self.prompt["next_user"], round=round_no, max_rounds=max_rounds,
+                         speeches=speeches, action=action or "发言",
+                         last_speaker=last_speaker or "（无人）",
+                         last_content=(last_content or "")[:120])
+        return await self._decide(user, "transition")
 
-    def _normalize(self, obj: dict | None, stage: str, fallback_speaker: str, raw_user: str) -> dict:
-        """Schema 校验 + 降级：
-        - 解析失败 -> 用兜底文案，type 按 stage 推断，next_speaker 用调度器给的备选；
-        - next_speaker 不在在场嘉宾里 -> 修正为备选，避免调度器拿到非法 ID。
-        """
-        valid_ids = {p.id for p in self.personas}
-        if obj is None:
-            return {
-                "type": "summary" if stage == "summary" else "question",
-                "content": self._fallback_text(stage),
-                "next_speaker": None if stage == "summary" else fallback_speaker,
-                "focus": self.topic,
-                "degraded": True,
-            }
-        t = str(obj.get("type", "question")).strip().lower()
+    async def interrupt(self, name: str, chars: int) -> dict:
+        user = self._fmt(self.prompt["interrupt_user"], name=name, chars=chars)
+        return await self._decide(user, "interrupt")
+
+    async def summary(self) -> dict:
+        return await self._decide(self.prompt["summary_user"], "summary")
+
+    async def _decide(self, user: str, stage: str) -> dict:
+        obj = await self._call_json(self._messages(user), retries=1, temperature=0.8)
+        return self._normalize(obj, stage)
+
+    def _normalize(self, obj: dict | None, stage: str) -> dict:
+        t = str((obj or {}).get("type") or stage).strip().lower()
         if t not in VALID_TYPES:
-            t = "summary" if stage == "summary" else "question"
-        nxt = obj.get("next_speaker")
-        if nxt not in valid_ids:
-            nxt = None if t in {"summary", "closing"} else fallback_speaker
-        content = str(obj.get("content", "")).strip() or self._fallback_text(stage)
-        focus = str(obj.get("focus", "")).strip() or self.topic
-        return {"type": t, "content": content, "next_speaker": nxt, "focus": focus, "degraded": False}
+            t = stage if stage in VALID_TYPES else "transition"
+        content = str((obj or {}).get("content") or "").strip()
+        focus = str((obj or {}).get("focus") or "").strip()
+        if not content:
+            content, focus = self._fallback(stage), self.topic
+        return {"type": t, "content": content, "focus": focus or self.topic,
+                "degraded": obj is None}
 
-    def _fallback_text(self, stage: str) -> str:
-        if stage == "summary":
-            return f"时间差不多了。关于「{self.topic}」，今天没有形成统一结论，但分歧点已经很清楚了。"
+    def _fallback(self, stage: str) -> str:
         if stage == "opening":
-            return f"今天我们聊「{self.topic}」，在场几位立场差别不小，我们直接开始。"
-        return "刚才这个说法我想再往下追一层，换个角度看看。"
+            return f"今天我们聊「{self.topic}」，在座几位立场差得挺远，我们直接开场。"
+        if stage == "summary":
+            return (f"关于「{self.topic}」，今天没有统一结论，但分歧已经很具体："
+                    f"风险和收益的先后顺序，才是真正要决策的东西。")
+        if stage == "interrupt":
+            return "我先插一句——请直接给结论，别再铺背景了。"
+        return "刚才这个说法我想再往下追一层，换个角度看会不会不一样？"

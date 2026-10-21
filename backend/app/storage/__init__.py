@@ -1,3 +1,15 @@
-from .db import Debate, Message, Persona, Repository, SEED_PERSONAS
+from .db import (
+    FALLBACK_POOL,
+    PALETTE,
+    SEED_TOPICS,
+    Debate,
+    Expert,
+    Lineup,
+    Message,
+    Repository,
+)
 
-__all__ = ["Debate", "Message", "Persona", "Repository", "SEED_PERSONAS"]
+__all__ = [
+    "FALLBACK_POOL", "PALETTE", "SEED_TOPICS",
+    "Debate", "Expert", "Lineup", "Message", "Repository",
+]
