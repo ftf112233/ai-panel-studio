@@ -17,7 +17,14 @@ python -m uvicorn backend.app.main:app --reload --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 ```
 
-> 启动方式二：`cd backend && python -m uvicorn app.main:app --port 8000`
+> 启动方式二（推荐）：
+> ```
+> cd backend && python -m uvicorn app.main:app --reload --port 8000
+> ```
+> 启动方式三（**零依赖**，未装 fastapi 也能演示，仅用于本地）：
+> ```
+> python backend/serve.py 8000          # 加 MOCK=true 可强制 Mock 流式
+> ```
 > 零依赖冒烟（不装 fastapi 也能验证编排链路）：`python backend/smoke.py`
 > 单元测试：`python backend/tests/test_orchestrator.py`
 
