@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 圆桌讨论</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand" id="brand">AI 圆桌<span>ROUNDTABLE</span></div>
+  <nav class="nav">
+    <a href="#/" data-nav="home">圆桌列表</a>
+    <a href="#/create" data-nav="create">发起圆桌</a>
+    <a href="#/archive" data-nav="archive">历史归档</a>
+  </nav>
+  <div class="mode" id="mode">—</div>
+</header>
+
+<main id="app"></main>
+
+<!-- 直播间结构 -->
+<template id="tpl-live">
+  <div class="live">
+    <section class="stage">
+      <div class="stage-head">
+        <div>
+          <h1 class="topic"></h1>
+          <div class="round-info"><span class="badge round">第 1 轮</span><span class="focus"></span></div>
+        </div>
+        <button class="ghost-btn" id="btn-transcript">Transcript</button>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="live-foot">
+        <span class="status" id="live-status">连接中…</span>
+      </div>
+    </section>
+    <aside class="transcript" id="transcript">
+      <div class="tr-head">
+        <h3>记录</h3>
+        <button class="ghost-btn" id="btn-close-tr">收起</button>
+      </div>
+      <div class="tr-body" id="tr-body"></div>
+    </aside>
+  </div>
+</template>
+
+<script src="js/app.js"></script>
+</body>
+</html>
