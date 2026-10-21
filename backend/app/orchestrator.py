@@ -42,6 +42,8 @@ class Orchestrator:
         self.order = [p.id for p in personas]
         self.messages: list[Message] = []
         self.last_focus: str = debate.topic
+        # 主持人"分块回放"的打字节奏（真实 LLM 下由 token 到达速度决定，这里只影响观感）
+        self.host_chunk_delay: float = 0.02
 
     # ---------------------------------------------------------------- 主流程
     async def run(self) -> AsyncIterator[dict]:
@@ -69,7 +71,7 @@ class Orchestrator:
                 speakers_this_round=[], last_focus="", recent_digest="",
                 fallback_speaker=self.order[0],
             )
-            for ev in self._emit_host(d, round_no):
+            async for ev in self._emit_host(d, round_no):
                 yield ev
             focus = d["focus"] or self.debate.topic
             speaker = d["next_speaker"] or self.order[0]
@@ -95,7 +97,7 @@ class Orchestrator:
                     if d["type"] in {"summary", "closing"}:
                         round_no = self.settings.max_rounds + 1  # 提前收束
                         break
-                    for ev in self._emit_host(d, round_no):
+                    async for ev in self._emit_host(d, round_no):
                         yield ev
                     focus = d["focus"] or focus
                     speaker = d["next_speaker"] or self._next_cyclic(speaker)
@@ -116,7 +118,7 @@ class Orchestrator:
                 )
                 if d["type"] in {"summary", "closing"}:
                     break
-                for ev in self._emit_host(d, round_no):
+                async for ev in self._emit_host(d, round_no):
                     yield ev
                 focus = d["focus"] or focus
                 speaker = d["next_speaker"] or self._next_cyclic(speaker)
@@ -129,7 +131,7 @@ class Orchestrator:
                 recent_digest=recent_digest(self.messages, self.settings.history_window),
                 fallback_speaker=None,
             )
-            for ev in self._emit_host(d, round_no):
+            async for ev in self._emit_host(d, round_no):
                 yield ev
             self.repo.update_debate(self.debate.id, status="done", round=round_no, summary=d["content"])
             yield _ev("done", debate_id=self.debate.id, summary=d["content"])
@@ -173,10 +175,11 @@ class Orchestrator:
         self.last_focus = focus
         yield _ev("stance", speaker=guest.speaker_id, name=guest.name, shift=shift)
 
-    def _emit_host(self, d: dict, round_no: int) -> AsyncIterator[dict]:
-        """主持人内容以"分块回放"上屏：决策已整体校验，观感仍是流式。"""
+    async def _emit_host(self, d: dict, round_no: int) -> AsyncIterator[dict]:
+        """主持人内容以"分块回放"上屏：决策已整体校验，观感仍是逐字流出。"""
         yield _ev("speaker_start", speaker="host", name=self.host.name, degraded=bool(d.get("degraded")))
-        for seg in chunk_text(d["content"], size=4):
+        for seg in chunk_text(d["content"], size=2):
+            await asyncio.sleep(self.host_chunk_delay)
             yield _ev("delta", speaker="host", text=seg)
         yield _ev("speaker_end", speaker="host")
 

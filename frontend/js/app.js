@@ -55,7 +55,7 @@ async function renderCreate() {
         <input type="text" id="topic" placeholder="例：AI 编程工具会取代初级程序员吗？" />
       </div>
       <div class="field">
-        <label>选择嘉宾（<span id="cnt">0</span>/5）</label>
+        <label>选择嘉宾（<span id="cnt">0</span>/5，要求 3-5 位）</label>
         <div class="persona-grid" id="grid">加载中…</div>
       </div>
       <button class="btn" id="start">开始圆桌</button>
@@ -75,6 +75,10 @@ async function renderCreate() {
     </div>`).join('');
   grid.querySelectorAll('.persona').forEach(el => el.onclick = () => {
     const id = el.dataset.id;
+    if (!picked.has(id) && picked.size >= 5) {
+      document.getElementById('cnt').textContent = picked.size;
+      return;
+    }
     picked.has(id) ? picked.delete(id) : picked.add(id);
     el.classList.toggle('on', picked.has(id));
     document.getElementById('cnt').textContent = picked.size;
@@ -84,7 +88,8 @@ async function renderCreate() {
     const topic = document.getElementById('topic').value.trim();
     const err = document.getElementById('err');
     if (topic.length < 2) return err.textContent = '主题至少 2 个字';
-    if (picked.size < 2) return err.textContent = '至少选 2 位嘉宾';
+    if (picked.size < 3) return err.textContent = '至少选 3 位嘉宾（要求 3-5 位）';
+    if (picked.size > 5) return err.textContent = '最多选 5 位嘉宾';
     err.textContent = '';
     try {
       const d = await getJSON('/api/debates', {

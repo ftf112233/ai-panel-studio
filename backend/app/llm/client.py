@@ -105,17 +105,23 @@ class DeepSeekClient(BaseLLMClient):
 class MockLLMClient(BaseLLMClient):
     """无 API Key 时的降级客户端：按句式切块 sleep 输出，前端体验与真实流式一致。"""
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, chunk_delay: float = 0.045,
+                 think_delay: float = 0.9):
         self.settings = settings
+        # Mock 的节奏参数：chunk_delay 控制打字速度，think_delay 控制"思考中"停留时长
+        self.chunk_delay = chunk_delay
+        self.think_delay = think_delay
 
     async def stream_chat(self, messages: list[dict], temperature: float = 0.9) -> AsyncIterator[str]:
+        # 先"思考"再出字：让前端的思考动画有真实停留，观感贴近真实 LLM 首字延迟
+        await asyncio.sleep(self.think_delay)
         text = self._compose(messages)
         for seg in self._split(text):
-            await asyncio.sleep(0.012)
+            await asyncio.sleep(self.chunk_delay)
             yield seg
 
     async def json_chat(self, messages: list[dict], temperature: float = 0.7) -> dict:
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(self.think_delay)
         return {"text": self._compose(messages)}
 
     @staticmethod

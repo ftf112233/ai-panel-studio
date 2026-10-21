@@ -1,6 +1,7 @@
 """FastAPI 入口：REST 建单/查单 + SSE 实时推流 + 静态托管前端。"""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import AsyncIterator
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .agents.guest import chunk_text
 from .config import settings
 from .llm.client import build_client
 from .orchestrator import Orchestrator
@@ -26,7 +28,7 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__fi
 
 class CreateDebateReq(BaseModel):
     topic: str = Field(min_length=2, max_length=200)
-    persona_ids: list[str] = Field(min_length=2, max_length=5)
+    persona_ids: list[str] = Field(min_length=3, max_length=5)  # 要求：3-5 位 AI 嘉宾
 
 
 # ---------------------------------------------------------------- REST API
@@ -44,8 +46,8 @@ def api_personas():
 @app.post("/api/debates")
 def api_create_debate(req: CreateDebateReq):
     personas = repo.get_personas(req.persona_ids)
-    if len(personas) < 2:
-        raise HTTPException(400, "至少需要 2 位有效嘉宾")
+    if len(personas) < 3:
+        raise HTTPException(400, "至少需要 3 位有效嘉宾（要求 3-5 位）")
     d = repo.create_debate(req.topic.strip(), [p.id for p in personas])
     return {"id": d.id, "topic": d.topic, "status": d.status, "persona_ids": d.persona_ids}
 
@@ -112,10 +114,15 @@ async def _event_stream(debate_id: str) -> AsyncIterator[str]:
                            for p in personas],
             },
         })
+        # 回放也逐字流出，避免"一次性刷出整场讨论"
         for m in repo.list_messages(d.id):
+            yield _sse({"event": "thinking", "data": {"speaker": m.speaker_id, "name": m.speaker_name}})
+            await asyncio.sleep(0.4)
             yield _sse({"event": "speaker_start",
                         "data": {"speaker": m.speaker_id, "name": m.speaker_name}})
-            yield _sse({"event": "delta", "data": {"speaker": m.speaker_id, "text": m.content}})
+            for seg in chunk_text(m.content, size=3):
+                await asyncio.sleep(0.02)
+                yield _sse({"event": "delta", "data": {"speaker": m.speaker_id, "text": seg}})
             yield _sse({"event": "speaker_end", "data": {"speaker": m.speaker_id}})
         yield _sse({"event": "done", "data": {"debate_id": d.id, "summary": d.summary, "replay": True}})
         return

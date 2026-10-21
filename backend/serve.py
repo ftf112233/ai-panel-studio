@@ -55,9 +55,14 @@ async def _events(debate_id: str):
             "host": {"id": "host", "name": "知遥", "avatar": "知", "color": "#495057"},
             "guests": [{"id": p.id, "name": p.name, "title": p.title, "avatar": p.avatar, "color": p.color}
                        for p in personas]}}
+        # 回放也逐字流出，避免"一次性刷出整场讨论"
         for m in repo.list_messages(d.id):
+            yield {"event": "thinking", "data": {"speaker": m.speaker_id, "name": m.speaker_name}}
+            await asyncio.sleep(0.4)
             yield {"event": "speaker_start", "data": {"speaker": m.speaker_id, "name": m.speaker_name}}
-            yield {"event": "delta", "data": {"speaker": m.speaker_id, "text": m.content}}
+            for i in range(0, len(m.content), 3):
+                await asyncio.sleep(0.02)
+                yield {"event": "delta", "data": {"speaker": m.speaker_id, "text": m.content[i:i + 3]}}
             yield {"event": "speaker_end", "data": {"speaker": m.speaker_id}}
         yield {"event": "done", "data": {"debate_id": d.id, "summary": d.summary, "replay": True}}
         return
@@ -151,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
             pass
         finally:
             loop.close()
+            # SSE 结束即关闭连接，避免客户端一直挂着等（之前会挂到超时）
+            self.close_connection = True
 
     # ---------------------------------------------------------------- POST
     def do_POST(self):
@@ -164,8 +171,8 @@ class Handler(BaseHTTPRequestHandler):
             return _json_response(self, 400, {"detail": "非法 JSON"})
         topic = str(payload.get("topic", "")).strip()
         ids = payload.get("persona_ids") or []
-        if len(topic) < 2 or len(ids) < 2:
-            return _json_response(self, 400, {"detail": "主题至少 2 字，嘉宾至少 2 位"})
+        if len(topic) < 2 or len(ids) < 3:
+            return _json_response(self, 400, {"detail": "主题至少 2 字，嘉宾 3-5 位"})
         personas = repo.get_personas(ids)
         d = repo.create_debate(topic, [p.id for p in personas])
         return _json_response(self, 200, {"id": d.id, "topic": d.topic,
