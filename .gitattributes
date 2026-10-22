@@ -1,0 +1,13 @@
+# 统一换行：脚本类文件按平台约定落盘，避免 Windows 上 .sh 出现 CRLF 导致 bash 报 \r
+* text=auto
+
+*.sh   text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.sql  text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
