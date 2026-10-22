@@ -43,6 +43,16 @@ python backend/serve.py 8000          # MOCK=true 可强制 Mock 流式
 > 若不装任何依赖，只用第 1 个配置即可完整演示（首页 / 发起 / 演播厅 / 归档全部可用）。
 > PyCharm 的 Terminal 里也可以用命令行，见下。
 
+### PyCharm 运行排错
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 运行键**转圈** | 服务正在运行（这是正常的！） | 浏览器打开 <http://127.0.0.1:8000>；红色方块 = 停止 |
+| 配置左侧出现 **✖** | ① 解释器没配置好；② 该配置需要的依赖没装（FastAPI 那个需要 fastapi/uvicorn） | 先用「零依赖 serve.py」配置跑；要接真模型再装依赖 |
+| 所有配置都 ✖ | 没有配置 Python 解释器 | `Settings → Project → Python Interpreter → Add Interpreter` 选本机 Python |
+| 装依赖 | Terminal 里执行 | `pip install -r backend/requirements.txt` |
+| `from app.xxx` 飘红 | 未标记源码根 | 右键 `backend` → `Mark Directory as → Sources Root` |
+
 其他命令：
 
 ```bash
