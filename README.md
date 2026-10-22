@@ -2,29 +2,44 @@
 
 输入话题 + 专家人数（默认 4），系统调用大模型**动态生成**主持人 + 专家阵容（姓名 / 职业 / Title / 立场 / 专属颜色），确认后进入演播厅，观看一场实时推进的多轮圆桌讨论：主持人开场、追问、串联、插话、总结；专家**自主**举手 / 补充 / 反驳，每次 1-2 句；过程中实时更新共识与分歧。
 
-仓库：<https://github.com/ftf112233/ai-panel-studio>（私有）
+仓库：<https://github.com/ftf112233/ai-panel-studio>（私有，按需授权访问）
 
-## 快速开始
+> 通过压缩包获取源码时，解压后按下面的步骤运行即可，**不需要 GitHub 访问权限**。
+
+## 最快体验（不装依赖、不配 Key）
+
+```bash
+python backend/serve.py 8000
+```
+
+浏览器打开 <http://127.0.0.1:8000>：
+
+1. 首页选一个预置话题，或自由输入一个主题 → 选专家人数 → 点「生成阵容」
+2. 确认阵容后自动进入**演播厅**：主持人开场 → 专家自主举手/补充/反驳（每次 1-2 句）→ 右侧实时刷新「专家状态 / 共识与分歧 / Transcript」
+3. 讨论结束由主持人做自然语言总结；到「归档」页可逐字回放任意历史场次
+
+> 未配置 API Key 时自动进入 **Mock 流式模式**（同样逐字上屏，节奏与真实模型一致），完整流程照样可演示。
+
+## 快速开始（正式路径）
 
 ```bash
 # 1) 安装依赖
 pip install -r backend/requirements.txt
 
 # 2) 配置 Key（可选：不配也能跑，自动进入 Mock 流式模式）
-cp .env.example .env        # 填入 DEEPSEEK_API_KEY
+cp .env.example .env        # Windows 用：copy .env.example .env
+# 在 .env 里填入 DEEPSEEK_API_KEY=sk-xxx
 
 # 3) 启动（生产路径）
 cd backend && python -m uvicorn app.main:app --reload --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 ```
 
-**零依赖启动**（未装 fastapi 也能演示 / 跑 E2E）：
+一键脚本（建虚拟环境 → 装依赖 → 启动，一条龙）：Windows 双击 `scripts/start.bat`，macOS / Linux 执行 `bash scripts/start.sh`。
 
-```bash
-python backend/serve.py 8000          # MOCK=true 可强制 Mock 流式
-```
+> 上面这条 `python backend/serve.py 8000` 走的是**零依赖路径**（未装 fastapi 也能演示 / 跑 E2E，内部用标准库 `http.server` 实现了同一套路由）。想强制 Mock 流式：`MOCK=true python backend/serve.py 8000`。
 
-### 用 PyCharm 运行（本机推荐）
+### 用 PyCharm 运行
 
 1. **打开项目**：`File → Open` 选择 `ai-roundtable` 目录（不是它的父目录）。
 2. **解释器**：`Settings → Python Interpreter` 选 Python 3.10+；在 Python Packages 面板里装 `fastapi` `uvicorn` `httpx`（或 Terminal 执行 `pip install -r backend/requirements.txt`）。
@@ -112,6 +127,21 @@ SSE 事件：`participants` `round_change` `focus` `agent_status` `speaker_start
                                          └─ SQLite(topics / debates / messages)
 ```
 
+## 目录结构
+
+```
+ai-roundtable/
+├── backend/
+│   ├── app/        main.py(FastAPI 路由) · orchestrator.py(状态机) · agents/ · llm/ · storage/
+│   ├── prompts/    lineup / host / guest / director / insight *.json（内置 version + changelog）
+│   ├── serve.py    零依赖 stdlib 版服务（未装 fastapi 时用同一套路由）
+│   ├── tests/      16 个单测        e2e/ 4 个端到端
+│   └── smoke.py / smoke_real.py    冒烟脚本（Mock / 真实 API）
+├── frontend/       index.html + css/ + js/
+├── scripts/        init_db.sql · start.bat · start.sh
+└── docs/           需求原文 · 设计 · API · Prompt 记录 · 联调实录 · 逐条验收
+```
+
 - 状态机：`OPENING → ROUND[1..N] → SUMMARY → DONE`
 - **禁止机械轮流**：`DirectorAgent` 依据 transcript 选人，且绝不会连续选同一个人（有单测断言）
 - 结构化输出：决策类（Host/Director/Insight）用 JSON 整体校验后再推正文；专家正文纯流式。页面永远只显示自然语言，**不显示 JSON 原文**
@@ -175,6 +205,16 @@ DEEPSEEK_API_KEY=sk-xxx python backend/smoke_real.py   # 默认 1 轮 / 2 次发
 3. **持久化与并发**：SQLite 单文件在多人同时观看时够用，但事件流目前靠 SSE 重放；可引入事件表 + 断点续传（Last-Event-ID）
 4. **用户干预**：允许观众中途提问或"指定下一位发言人"
 5. **可观测性**：记录每次 LLM 调用的 token/耗时/降级率，形成质量看板
+
+## 交付物
+
+| 交付物 | 位置 |
+|---|---|
+| 可运行源码 | 本仓库（GitHub 私有，按需授权）；亦可以压缩包形式交付 |
+| 架构设计文档（模块图 / 接口 / 数据流 / 兜底） | `docs/01-架构设计文档.md`、`docs/10-PRD.md`、`docs/11-ER图.md`、`docs/12-API文档.md` |
+| Prompt 设计文档 + Prompt 记录（含版本迭代） | `docs/02-Prompt设计文档.md`、`docs/13-Prompt记录.md`、`backend/prompts/*.json` |
+| 工作流程图 | `docs/00-工作流程图.md`（含运行时数据流、状态机、Git 分支流程） |
+| 需求逐条验收 + 真实联调实录 | `docs/16-需求逐条验收.md`、`docs/15-真实联调实录.md` |
 
 ## 文档索引
 
