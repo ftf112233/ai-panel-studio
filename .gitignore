@@ -5,3 +5,7 @@ __pycache__/
 venv/
 backend/data/*.db
 .DS_Store
+
+# PyCharm：保留 runConfigurations（方便评委/面试官一键运行），其余忽略
+.idea/*
+!.idea/runConfigurations

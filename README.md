@@ -22,6 +22,25 @@ cd backend && python -m uvicorn app.main:app --reload --port 8000
 python backend/serve.py 8000          # MOCK=true 可强制 Mock 流式
 ```
 
+### 用 PyCharm 运行（本机推荐）
+
+1. **打开项目**：`File → Open` 选择 `ai-roundtable` 目录（不是它的父目录）。
+2. **解释器**：`Settings → Python Interpreter` 选 Python 3.10+；在 Python Packages 面板里装 `fastapi` `uvicorn` `httpx`（或 Terminal 执行 `pip install -r backend/requirements.txt`）。
+3. **标记源码根**：右键 `backend` 目录 → `Mark Directory as → Sources Root`（否则 `from app.xxx import` 会飘红，运行不受影响）。
+4. **选一个 Run Configuration**（已随仓库提供，右上角下拉即可看到）：
+
+| 配置名 | 用途 | 工作目录 |
+|---|---|---|
+| `AI Panel Studio · 零依赖 serve.py` | **不装 fastapi 也能跑**，适合先看效果 | 项目根 |
+| `AI Panel Studio · FastAPI(uvicorn)` | 正式路径（需已装依赖） | `backend` |
+| `Tests · 核心逻辑(不打网络/不烧token)` | 跑 `tests/test_core.py` | `backend` |
+
+5. **填 Key**（可选）：在对应 Run Configuration 的 `Environment variables` 里加 `DEEPSEEK_API_KEY=sk-xxx`；不填就自动进入 Mock 流式。也可以直接在项目根放 `.env`（已被 gitignore）。
+6. 点绿色三角运行，浏览器打开 **http://127.0.0.1:8000**。
+
+> 若不装任何依赖，只用第 1 个配置即可完整演示（首页 / 发起 / 演播厅 / 归档全部可用）。
+> PyCharm 的 Terminal 里也可以用命令行，见下。
+
 其他命令：
 
 ```bash
