@@ -200,7 +200,8 @@ class Orchestrator:
 
         # 6. 共识 / 分歧增量提炼（实时，不等结束）
         try:
-            merged = await self.insight.extract(self.consensus, self.disagreements, content)
+            merged = await self.insight.extract(self.consensus, self.disagreements, content,
+                                                speaker=f"{expert.name}（{expert.occupation}）")
         except Exception:
             merged = {"consensus": self.consensus, "disagreements": self.disagreements}
         if merged["consensus"] != self.consensus or merged["disagreements"] != self.disagreements:

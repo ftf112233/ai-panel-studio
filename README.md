@@ -120,6 +120,7 @@ DEEPSEEK_API_KEY=sk-xxx python backend/smoke_real.py   # 默认 1 轮 / 2 次发
 - **总结**：主持人点出真分歧、各方最强论点（"人才成长阶梯就断了"）与可执行下一步。
 
 > 说明：无 API Key 时自动进入 Mock 流式；装了 httpx 走 httpx，**没装 httpx 会自动改用标准库 urllib 流式**，因此零依赖也能接真模型。
+> 完整实录（含两场真实讨论的发言顺序、共识分歧、总结原文）见 `docs/15-真实联调实录.md`。
 
 ## 需求对照（作业 F1-F12）
 

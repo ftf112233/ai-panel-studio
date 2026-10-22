@@ -26,7 +26,8 @@ class InsightAgent(BaseAgent):
         self.topic = topic
         self.prompt = load_prompt(INSIGHT_PROMPT)
 
-    async def extract(self, consensus: list[str], disagreements: list[dict], latest: str) -> dict:
+    async def extract(self, consensus: list[str], disagreements: list[dict], latest: str,
+                      speaker: str = "") -> dict:
         messages = [
             {"role": "system", "content": self.prompt["system"]},
             {"role": "user", "content": self._fmt(
@@ -34,7 +35,7 @@ class InsightAgent(BaseAgent):
                 consensus="\n".join(f"- {c}" for c in consensus) or "（暂无）",
                 disagreements="\n".join(f"- {d.get('a','')} vs {d.get('b','')}：{d.get('point','')}"
                                         for d in disagreements) or "（暂无）",
-                latest=latest or "（暂无）")},
+                speaker=speaker or "（未知）", latest=latest or "（暂无）")},
         ]
         obj = await self._call_json(messages, retries=0, temperature=0.3)
         return merge_insights(consensus, disagreements, obj or {})
