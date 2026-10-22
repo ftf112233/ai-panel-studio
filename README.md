@@ -170,7 +170,7 @@ DEEPSEEK_API_KEY=sk-xxx python backend/smoke_real.py   # 默认 1 轮 / 2 次发
 
 ## 后续改进方向
 
-1. **调度策略实验**：点名制 vs 自由抢话的 A/B 评估（`evals/rubric.md` 已有 6 指标评估表），用数据决定默认策略
+1. **调度策略实验**：固定 3 个主题 × 每种调度跑 3 次，按「交锋率 / 重复率 / 聚焦度 / 收敛性 / 立场真实性 / 人设一致性」6 个指标（0-2 分）人工打分，用数据决定默认调度策略
 2. **共识/分歧质量**：当前靠一次 LLM 提炼，后续可做多轮投票式聚合与置信度
 3. **持久化与并发**：SQLite 单文件在多人同时观看时够用，但事件流目前靠 SSE 重放；可引入事件表 + 断点续传（Last-Event-ID）
 4. **用户干预**：允许观众中途提问或"指定下一位发言人"
@@ -180,11 +180,12 @@ DEEPSEEK_API_KEY=sk-xxx python backend/smoke_real.py   # 默认 1 轮 / 2 次发
 
 | 文档 | 内容 |
 |---|---|
-| `docs/00-作业需求原文.md` | 作业原文 + 验收点对照 |
+| `docs/00-作业需求原文.md` | 作业原文（存档备查） |
 | `docs/10-PRD.md` | PRD（含 mermaid 流程图与状态机） |
 | `docs/11-ER图.md` | ER 图 + 建模决策 |
 | `docs/12-API文档.md` | REST + SSE 契约 |
 | `docs/13-Prompt记录.md` | ≥5 段核心 Prompt，SDD/DDD/TDD/E2E 四阶段标记 |
 | `docs/14-开发过程与工作流说明.md` | 开发流程、3 个典型问题、工程化理解 |
 | `docs/01-架构设计文档.md` / `docs/02-Prompt设计文档.md` / `docs/00-工作流程图.md` | 早期设计稿与迭代记录 |
-| `evals/rubric.md` | 圆桌质量人工评估表 |
+| `docs/15-真实联调实录.md` | 真实 DeepSeek API 跑通的两场完整实录 |
+| `docs/16-需求逐条验收.md` | 功能要求 / 技术要求 / 核心考察点逐条对照 |
