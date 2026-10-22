@@ -37,8 +37,6 @@ class DeepSeekClient(BaseLLMClient):
         return f"{self.settings.deepseek_base_url.rstrip('/')}/chat/completions"
 
     async def stream_chat(self, messages: list[dict], temperature: float = 0.9) -> AsyncIterator[str]:
-        import httpx  # 延迟导入
-
         payload = {
             "model": self.settings.model,
             "messages": messages,
@@ -49,6 +47,14 @@ class DeepSeekClient(BaseLLMClient):
             "Authorization": f"Bearer {self.settings.deepseek_api_key}",
             "Content-Type": "application/json",
         }
+        try:
+            import httpx  # 延迟导入：装了 httpx 就走它
+        except ImportError:
+            # 无第三方依赖时，用标准库 urllib 在线程里读流（本机零安装也能接真模型）
+            async for delta in self._stream_urllib(payload, headers):
+                yield delta
+            return
+
         try:
             async with httpx.AsyncClient(timeout=self.settings.request_timeout) as cli:
                 async with cli.stream("POST", self._url, json=payload, headers=headers) as resp:
@@ -76,9 +82,65 @@ class DeepSeekClient(BaseLLMClient):
         except Exception as e:  # 网络/超时等统一包装，交给上层兜底
             raise LLMError(str(e)) from e
 
-    async def json_chat(self, messages: list[dict], temperature: float = 0.7) -> dict:
-        import httpx
+    # ---- 零依赖兜底：标准库 urllib ----
+    async def _stream_urllib(self, payload: dict, headers: dict) -> AsyncIterator[str]:
+        import threading
+        import urllib.error
+        import urllib.request
 
+        loop = asyncio.get_running_loop()
+        q: asyncio.Queue = asyncio.Queue()
+
+        def worker():
+            try:
+                req = urllib.request.Request(self._url, data=json.dumps(payload).encode("utf-8"),
+                                             headers=headers)
+                with urllib.request.urlopen(req, timeout=self.settings.request_timeout) as resp:
+                    for raw in resp:
+                        line = raw.decode("utf-8", errors="ignore").strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {}).get("content")
+                        if delta:
+                            loop.call_soon_threadsafe(q.put_nowait, delta)
+            except Exception as e:
+                loop.call_soon_threadsafe(q.put_nowait, RuntimeError(str(e)))
+            finally:
+                loop.call_soon_threadsafe(q.put_nowait, None)
+
+        threading.Thread(target=worker, daemon=True).start()
+        while True:
+            item = await q.get()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                raise LLMError(str(item))
+            yield item
+
+    async def _json_urllib(self, payload: dict, headers: dict) -> dict:
+        import urllib.error
+        import urllib.request
+
+        req = urllib.request.Request(self._url, data=json.dumps(payload).encode("utf-8"),
+                                     headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=self.settings.request_timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return {"text": data["choices"][0]["message"]["content"]}
+        except Exception as e:
+            raise LLMError(str(e)) from e
+
+    async def json_chat(self, messages: list[dict], temperature: float = 0.7) -> dict:
         payload = {
             "model": self.settings.model,
             "messages": messages,
@@ -91,6 +153,10 @@ class DeepSeekClient(BaseLLMClient):
             "Content-Type": "application/json",
         }
         try:
+            try:
+                import httpx
+            except ImportError:
+                return await self._json_urllib(payload, headers)
             async with httpx.AsyncClient(timeout=self.settings.request_timeout) as cli:
                 resp = await cli.post(self._url, json=payload, headers=headers)
                 if resp.status_code >= 400:
