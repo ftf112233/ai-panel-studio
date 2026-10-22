@@ -39,34 +39,27 @@ cd backend && python -m uvicorn app.main:app --reload --port 8000
 
 > 上面这条 `python backend/serve.py 8000` 走的是**零依赖路径**（未装 fastapi 也能演示 / 跑 E2E，内部用标准库 `http.server` 实现了同一套路由）。想强制 Mock 流式：`MOCK=true python backend/serve.py 8000`。
 
-### 用 PyCharm 运行
+### 用 PyCharm 运行（可选）
 
-1. **打开项目**：`File → Open` 选择 `ai-roundtable` 目录（不是它的父目录）。
-2. **解释器**：`Settings → Python Interpreter` 选 Python 3.10+；在 Python Packages 面板里装 `fastapi` `uvicorn` `httpx`（或 Terminal 执行 `pip install -r backend/requirements.txt`）。
-3. **标记源码根**：右键 `backend` 目录 → `Mark Directory as → Sources Root`（否则 `from app.xxx import` 会飘红，运行不受影响）。
-4. **选一个 Run Configuration**（已随仓库提供，右上角下拉即可看到）：
+仓库随附 3 个 Run Configuration，打开项目后在右上角下拉里直接选即可：
 
 | 配置名 | 用途 | 工作目录 |
 |---|---|---|
-| `AI Panel Studio · 零依赖 serve.py` | **不装 fastapi 也能跑**，适合先看效果 | 项目根 |
-| `AI Panel Studio · FastAPI(uvicorn)` | 正式路径（需已装依赖） | `backend` |
-| `Tests · 核心逻辑(不打网络/不烧token)` | 跑 `tests/test_core.py` | `backend` |
+| `AI Panel Studio · 零依赖 serve.py` | **不装依赖也能完整演示** | 项目根 |
+| `AI Panel Studio · FastAPI(uvicorn)` | 正式路径（需已装 fastapi/uvicorn） | `backend` |
+| `Tests · 全部单测(不打网络/不烧token)` | 跑 `backend/tests/` 下全部单测 | `backend` |
 
-5. **填 Key**（可选）：在对应 Run Configuration 的 `Environment variables` 里加 `DEEPSEEK_API_KEY=sk-xxx`；不填就自动进入 Mock 流式。也可以直接在项目根放 `.env`（已被 gitignore）。
-6. 点绿色三角运行，浏览器打开 **http://127.0.0.1:8000**。
+前置两步：`File → Open` 打开 `ai-roundtable` 目录本身；右键 `backend` → `Mark Directory as → Sources Root`（否则 `from app.xxx import` 飘红，不影响运行）。要接真模型，在配置的 `Environment variables` 里加 `DEEPSEEK_API_KEY=sk-xxx`，或在项目根放 `.env`。
 
-> 若不装任何依赖，只用第 1 个配置即可完整演示（首页 / 发起 / 演播厅 / 归档全部可用）。
-> PyCharm 的 Terminal 里也可以用命令行，见下。
-
-### PyCharm 运行排错
+### 运行排错
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
-| 运行键**转圈** | 服务正在运行（这是正常的！） | 浏览器打开 <http://127.0.0.1:8000>；红色方块 = 停止 |
-| 配置左侧出现 **✖** | ① 解释器没配置好；② 该配置需要的依赖没装（FastAPI 那个需要 fastapi/uvicorn） | 先用「零依赖 serve.py」配置跑；要接真模型再装依赖 |
-| 所有配置都 ✖ | 没有配置 Python 解释器 | `Settings → Project → Python Interpreter → Add Interpreter` 选本机 Python |
-| 装依赖 | Terminal 里执行 | `pip install -r backend/requirements.txt` |
+| `Address already in use` / `[Errno 10048]` | 8000 端口被占用 | 换端口：`python backend/serve.py 8111`；FastAPI 路径用 `PORT=8111 python backend/run_uvicorn.py`（Windows：`set PORT=8111 && python backend/run_uvicorn.py`） |
+| 运行键**转圈** | 服务正在运行（正常现象） | 浏览器打开对应端口；红色方块 = 停止 |
+| 配置左侧出现 **✖** | 解释器未配置，或该配置依赖未安装 | 先用「零依赖 serve.py」配置；接真模型再装依赖 |
 | `from app.xxx` 飘红 | 未标记源码根 | 右键 `backend` → `Mark Directory as → Sources Root` |
+| 页面一直停在「生成阵容」 | 未配 Key 时走 Mock，或真模型响应慢 | 看后端日志；Mock 模式每场约 60 秒属正常 |
 
 其他命令：
 
